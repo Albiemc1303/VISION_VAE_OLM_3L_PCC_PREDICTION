@@ -1,0 +1,23 @@
+{
+  "pattern_lstm": {
+    "hidden_dim": 512,
+    "num_layers": 2,
+    "buffer_size": 16,
+    "description": "Frozen LSTM for pattern detection in latent sequences"
+  },
+  "compression_lstm": {
+    "compressed_dim": 256,
+    "num_layers": 2,
+    "description": "Trainable LSTM for compressing detected patterns"
+  },
+  "central_lstm": {
+    "hidden_dim": 512,
+    "num_layers": 3,
+    "description": "Main LSTM for next frame prediction from compressed patterns"
+  },
+  "training": {
+    "enable_real_time_training": true,
+    "training_frequency": 5,
+    "description": "Training configuration for real-time learning"
+  }
+}

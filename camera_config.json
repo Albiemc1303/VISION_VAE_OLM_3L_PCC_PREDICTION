@@ -1,0 +1,12 @@
+{
+  "camera_index": 0,
+  "frame_width": 1280,
+  "frame_height": 720,
+  "mirror_preview": true,
+  "title": "Camera Preview with AI",
+  "enable_ai": true,
+  "vae_path": "vae",
+  "ai_config_path": "ai_config.json"
+}
+
+
