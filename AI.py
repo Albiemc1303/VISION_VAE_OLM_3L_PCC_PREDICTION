@@ -7,10 +7,10 @@ import json
 import time
 from collections import deque
 
-# Assuming these classes are defined elsewhere with updated input logic
-# from vae_processor import VAEProcessor
-# from lstm_models import PatternLSTM, CompressionLSTM, CentralLSTM 
-# (The structure of CentralLSTM must now accept an input of size latent_dim + compressed_dim)
+
+from vae_processor import VAEProcessor
+from lstm_models import PatternLSTM, CompressionLSTM, CentralLSTM 
+
 
 import cv2
 
