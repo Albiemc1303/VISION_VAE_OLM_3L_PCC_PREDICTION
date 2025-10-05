@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Create visualization images for OLM project benchmarks and metrics
+Create visualization images for OLM project benchmarks and metrics.
+Updated to use Pandas for better data handling and ensure synchronized X-axes.
 """
 
 import json
@@ -14,7 +15,7 @@ def load_jsonl(file_path):
     """Load JSONL file into list of dictionaries"""
     data = []
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
                 if line.strip():
                     data.append(json.loads(line))
@@ -30,30 +31,48 @@ def create_metrics_visualization():
         print("No metrics data found, creating sample visualization")
         return create_sample_metrics()
 
-    # Extract data
-    frames = [d.get('frame', 0) for d in metrics_data]
-    fps = [d.get('fps', 0) for d in metrics_data]
-    loss_short = [d.get('loss_ema_short', 0) for d in metrics_data if d.get('loss_ema_short') is not None]
-    loss_long = [d.get('loss_ema_long', 0) for d in metrics_data if d.get('loss_ema_long') is not None]
+    # --- Use Pandas for robust extraction and cleaning ---
+    df = pd.DataFrame(metrics_data)
+    
+    # Check for core metrics column existence and explode nested JSONs if necessary
+    if 'frame_metrics' in df.columns:
+        df = pd.join(df.drop('frame_metrics', axis=1), 
+                     df['frame_metrics'].apply(pd.Series).add_prefix('frame_'), 
+                     left_index=True, right_index=True)
+    if 'latent_metrics' in df.columns:
+        df = pd.join(df.drop('latent_metrics', axis=1), 
+                     df['latent_metrics'].apply(pd.Series).add_prefix('latent_'), 
+                     left_index=True, right_index=True)
+
+    # Filter out rows missing the core frame count
+    df = df.dropna(subset=['frame'])
+    
+    # Extract data (using .values for direct numpy array extraction where appropriate)
+    frames = df['frame'].values
+    fps = df['fps'].values
+    loss_short = df['loss_ema_short'].dropna().values
+    loss_long = df['loss_ema_long'].dropna().values
+    
+    # Ensure corresponding frame indices are extracted for metrics not recorded every frame
+    loss_frames = df.loc[df['loss_ema_short'].notna(), 'frame'].values
+    psnr_frames = df.loc[df['frame_psnr'].notna(), 'frame'].values
+    ssim_frames = df.loc[df['frame_ssim'].notna(), 'frame'].values
+    latent_frames = df.loc[df['latent_cos_pred_target'].notna(), 'frame'].values
 
     # Frame metrics
-    frame_psnr = [d.get('frame_metrics', {}).get('psnr') for d in metrics_data]
-    frame_ssim = [d.get('frame_metrics', {}).get('ssim') for d in metrics_data]
-    frame_psnr = [x for x in frame_psnr if x is not None]
-    frame_ssim = [x for x in frame_ssim if x is not None]
+    frame_psnr = df['frame_psnr'].dropna().values
+    frame_ssim = df['frame_ssim'].dropna().values
 
-    # Latent metrics
-    cos_pred = [d.get('latent_metrics', {}).get('cos_pred_target') for d in metrics_data]
-    cos_prev = [d.get('latent_metrics', {}).get('cos_prev_target') for d in metrics_data]
-    cos_pred = [x for x in cos_pred if x is not None]
-    cos_prev = [x for x in cos_prev if x is not None]
-
-    # Create comprehensive plot
+    # Latent metrics (Causality)
+    cos_pred = df['latent_cos_pred_target'].dropna().values
+    cos_prev = df['latent_cos_prev_target'].dropna().values
+    
+    # --- Create comprehensive plot ---
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
     fig.suptitle('OLM Pipeline - Real-time Metrics Dashboard', fontsize=16, fontweight='bold')
 
-    # FPS over time
-    if fps:
+    # FPS over Frame Count
+    if fps.size > 0:
         axes[0, 0].plot(frames[:len(fps)], fps, 'b-', linewidth=2)
         axes[0, 0].set_title('Processing FPS', fontweight='bold')
         axes[0, 0].set_xlabel('Frame Count')
@@ -61,69 +80,89 @@ def create_metrics_visualization():
         axes[0, 0].grid(True, alpha=0.3)
         axes[0, 0].axhline(y=24, color='r', linestyle='--', alpha=0.7, label='Target 24 FPS')
         axes[0, 0].legend()
+    else:
+        axes[0, 0].text(0.5, 0.5, 'No FPS Data', ha='center', va='center')
 
-    # Loss curves
-    if loss_short or loss_long:
-        if loss_short:
-            axes[0, 1].plot(range(len(loss_short)), loss_short, 'g-', linewidth=2, label='Short EMA', alpha=0.8)
-        if loss_long:
-            axes[0, 1].plot(range(len(loss_long)), loss_long, 'b-', linewidth=2, label='Long EMA', alpha=0.8)
+
+    # Loss curves over Frame Count (uses loss_frames)
+    if loss_short.size > 0 or loss_long.size > 0:
+        if loss_short.size > 0:
+            axes[0, 1].plot(loss_frames[:len(loss_short)], loss_short, 'g-', linewidth=2, label='Short EMA', alpha=0.8)
+        if loss_long.size > 0:
+            axes[0, 1].plot(loss_frames[:len(loss_long)], loss_long, 'b-', linewidth=2, label='Long EMA', alpha=0.8)
+        
         axes[0, 1].set_title('Training Loss (EMA)', fontweight='bold')
-        axes[0, 1].set_xlabel('Training Steps')
+        axes[0, 1].set_xlabel('Frame Count')
         axes[0, 1].set_ylabel('MSE Loss')
         axes[0, 1].set_yscale('log')
         axes[0, 1].grid(True, alpha=0.3)
         axes[0, 1].legend()
+    else:
+        axes[0, 1].text(0.5, 0.5, 'No Loss Data', ha='center', va='center')
 
-    # Frame quality metrics
-    if frame_psnr:
-        axes[0, 2].plot(range(len(frame_psnr)), frame_psnr, 'r-', linewidth=2)
+
+    # Frame quality metrics (PSNR) over Frame Count (uses psnr_frames)
+    if frame_psnr.size > 0:
+        axes[0, 2].plot(psnr_frames[:len(frame_psnr)], frame_psnr, 'r-', linewidth=2)
         axes[0, 2].set_title('Frame Prediction Quality (PSNR)', fontweight='bold')
-        axes[0, 2].set_xlabel('Prediction Steps')
+        axes[0, 2].set_xlabel('Frame Count')
         axes[0, 2].set_ylabel('PSNR (dB)')
         axes[0, 2].grid(True, alpha=0.3)
         axes[0, 2].axhline(y=25, color='g', linestyle='--', alpha=0.7, label='Target 25+ dB')
         axes[0, 2].legend()
+    else:
+        axes[0, 2].text(0.5, 0.5, 'No PSNR Data', ha='center', va='center')
 
-    # SSIM quality
-    if frame_ssim:
-        axes[1, 0].plot(range(len(frame_ssim)), frame_ssim, 'purple', linewidth=2)
+
+    # SSIM quality over Frame Count (uses ssim_frames)
+    if frame_ssim.size > 0:
+        axes[1, 0].plot(ssim_frames[:len(frame_ssim)], frame_ssim, 'purple', linewidth=2)
         axes[1, 0].set_title('Structural Similarity (SSIM)', fontweight='bold')
-        axes[1, 0].set_xlabel('Prediction Steps')
+        axes[1, 0].set_xlabel('Frame Count')
         axes[1, 0].set_ylabel('SSIM')
         axes[1, 0].grid(True, alpha=0.3)
         axes[1, 0].axhline(y=0.99, color='g', linestyle='--', alpha=0.7, label='Target 0.99+')
         axes[1, 0].legend()
+    else:
+        axes[1, 0].text(0.5, 0.5, 'No SSIM Data', ha='center', va='center')
 
-    # Causality analysis
-    if cos_pred and cos_prev:
+
+    # Causality analysis over Frame Count (uses latent_frames)
+    if cos_pred.size > 0 and cos_prev.size > 0:
         min_len = min(len(cos_pred), len(cos_prev))
-        axes[1, 1].plot(range(min_len), cos_pred[:min_len], 'orange', linewidth=2, label='cos(ẑₜ₊₁, zₜ₊₁)', alpha=0.8)
-        axes[1, 1].plot(range(min_len), cos_prev[:min_len], 'cyan', linewidth=2, label='cos(zₜ, zₜ₊₁)', alpha=0.8)
+        axes[1, 1].plot(latent_frames[:min_len], cos_pred[:min_len], 'orange', linewidth=2, label='cos(ẑₜ₊₁, zₜ₊₁)', alpha=0.8)
+        axes[1, 1].plot(latent_frames[:min_len], cos_prev[:min_len], 'cyan', linewidth=2, label='cos(zₜ, zₜ₊₁)', alpha=0.8)
         axes[1, 1].set_title('Causality Verification', fontweight='bold')
-        axes[1, 1].set_xlabel('Prediction Steps')
+        axes[1, 1].set_xlabel('Frame Count')
         axes[1, 1].set_ylabel('Cosine Similarity')
         axes[1, 1].grid(True, alpha=0.3)
         axes[1, 1].legend()
+    else:
+        axes[1, 1].text(0.5, 0.5, 'No Latent Data', ha='center', va='center')
+
 
     # Performance summary
     axes[1, 2].axis('off')
     summary_text = "Performance Summary:\n\n"
-    if frame_psnr:
+    if frame_psnr.size > 0:
         summary_text += f"• PSNR: {np.mean(frame_psnr):.1f} ± {np.std(frame_psnr):.1f} dB\n"
-    if frame_ssim:
+    if frame_ssim.size > 0:
         summary_text += f"• SSIM: {np.mean(frame_ssim):.3f} ± {np.std(frame_ssim):.3f}\n"
-    if fps:
+    if fps.size > 0:
         summary_text += f"• FPS: {np.mean(fps):.1f} ± {np.std(fps):.1f}\n"
-    if loss_short:
-        summary_text += f"• Loss: {np.mean(loss_short):.2e}\n"
+    
+    # CHANGED: Report final/min loss for convergence
+    if loss_long.size > 0:
+        summary_text += f"• Long Loss (Final): {loss_long[-1]:.2e}\n"
+    elif loss_short.size > 0:
+        summary_text += f"• Short Loss (Final): {loss_short[-1]:.2e}\n"
 
-    summary_text += f"\n• Total Frames: {max(frames) if frames else 0}\n"
+    summary_text += f"\n• Total Frames: {max(frames) if frames.size > 0 else 0}\n"
     summary_text += f"• Data Points: {len(metrics_data)}\n"
     summary_text += "\nStatus: ✓ Stable Performance\n✓ No Divergence\n✓ Causality Maintained"
 
     axes[1, 2].text(0.1, 0.9, summary_text, transform=axes[1, 2].transAxes, fontsize=11,
-                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.3))
+                     verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.3))
 
     plt.tight_layout()
     plt.savefig('images/metrics_dashboard.png', dpi=300, bbox_inches='tight')
@@ -138,44 +177,33 @@ def create_benchmark_visualization():
         print("No benchmark data found, creating sample visualization")
         return create_sample_benchmarks()
 
-    # Extract rollout data
-    frames = []
-    rollout_5_psnr = []
-    rollout_5_ssim = []
-    rollout_10_psnr = []
-    rollout_10_ssim = []
-
-    for d in benchmark_data:
-        frames.append(d.get('frame', 0))
-
-        rollouts = d.get('rollouts', {})
-        if '5' in rollouts and rollouts['5'].get('psnr') is not None:
-            rollout_5_psnr.append(rollouts['5']['psnr'])
-            rollout_5_ssim.append(rollouts['5']['ssim'])
-        else:
-            rollout_5_psnr.append(None)
-            rollout_5_ssim.append(None)
-
-        if '10' in rollouts and rollouts['10'].get('psnr') is not None:
-            rollout_10_psnr.append(rollouts['10']['psnr'])
-            rollout_10_ssim.append(rollouts['10']['ssim'])
-        else:
-            rollout_10_psnr.append(None)
-            rollout_10_ssim.append(None)
-
-    # Filter None values
-    valid_5_psnr = [(i, v) for i, v in enumerate(rollout_5_psnr) if v is not None]
-    valid_5_ssim = [(i, v) for i, v in enumerate(rollout_5_ssim) if v is not None]
-    valid_10_psnr = [(i, v) for i, v in enumerate(rollout_10_psnr) if v is not None]
-    valid_10_ssim = [(i, v) for i, v in enumerate(rollout_10_ssim) if v is not None]
+    # --- Use Pandas for robust extraction and cleaning ---
+    df = pd.json_normalize(benchmark_data, sep='_')
+    df = df.dropna(subset=['frame'])
+    
+    # --- Extract rollout data
+    frames = df['frame'].values
+    
+    # 5-step rollouts
+    rollout_5_psnr = df['rollouts_5_psnr'].dropna().values
+    rollout_5_ssim = df['rollouts_5_ssim'].dropna().values
+    
+    # 10-step rollouts
+    rollout_10_psnr = df['rollouts_10_psnr'].dropna().values
+    rollout_10_ssim = df['rollouts_10_ssim'].dropna().values
+    
+    # Benchmark run indices (we plot against run index for clarity, not frame count)
+    x_5_psnr = np.arange(len(rollout_5_psnr))
+    x_5_ssim = np.arange(len(rollout_5_ssim))
+    x_10_psnr = np.arange(len(rollout_10_psnr))
+    x_10_ssim = np.arange(len(rollout_10_ssim))
 
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     fig.suptitle('OLM Pipeline - Open-Loop Rollout Performance', fontsize=16, fontweight='bold')
 
     # 5-step PSNR
-    if valid_5_psnr:
-        x_vals, y_vals = zip(*valid_5_psnr)
-        axes[0, 0].plot(x_vals, y_vals, 'g-o', linewidth=2, markersize=4, alpha=0.7)
+    if rollout_5_psnr.size > 0:
+        axes[0, 0].plot(x_5_psnr, rollout_5_psnr, 'g-o', linewidth=2, markersize=4, alpha=0.7)
         axes[0, 0].set_title('5-Step Rollout PSNR', fontweight='bold')
         axes[0, 0].set_xlabel('Benchmark Run')
         axes[0, 0].set_ylabel('PSNR (dB)')
@@ -185,9 +213,8 @@ def create_benchmark_visualization():
         axes[0, 0].legend()
 
     # 5-step SSIM
-    if valid_5_ssim:
-        x_vals, y_vals = zip(*valid_5_ssim)
-        axes[0, 1].plot(x_vals, y_vals, 'b-o', linewidth=2, markersize=4, alpha=0.7)
+    if rollout_5_ssim.size > 0:
+        axes[0, 1].plot(x_5_ssim, rollout_5_ssim, 'b-o', linewidth=2, markersize=4, alpha=0.7)
         axes[0, 1].set_title('5-Step Rollout SSIM', fontweight='bold')
         axes[0, 1].set_xlabel('Benchmark Run')
         axes[0, 1].set_ylabel('SSIM')
@@ -197,9 +224,8 @@ def create_benchmark_visualization():
         axes[0, 1].legend()
 
     # 10-step PSNR
-    if valid_10_psnr:
-        x_vals, y_vals = zip(*valid_10_psnr)
-        axes[1, 0].plot(x_vals, y_vals, 'orange', linewidth=2, marker='s', markersize=4, alpha=0.7)
+    if rollout_10_psnr.size > 0:
+        axes[1, 0].plot(x_10_psnr, rollout_10_psnr, 'orange', linewidth=2, marker='s', markersize=4, alpha=0.7)
         axes[1, 0].set_title('10-Step Rollout PSNR', fontweight='bold')
         axes[1, 0].set_xlabel('Benchmark Run')
         axes[1, 0].set_ylabel('PSNR (dB)')
@@ -209,9 +235,8 @@ def create_benchmark_visualization():
         axes[1, 0].legend()
 
     # 10-step SSIM
-    if valid_10_ssim:
-        x_vals, y_vals = zip(*valid_10_ssim)
-        axes[1, 1].plot(x_vals, y_vals, 'purple', linewidth=2, marker='s', markersize=4, alpha=0.7)
+    if rollout_10_ssim.size > 0:
+        axes[1, 1].plot(x_10_ssim, rollout_10_ssim, 'purple', linewidth=2, marker='s', markersize=4, alpha=0.7)
         axes[1, 1].set_title('10-Step Rollout SSIM', fontweight='bold')
         axes[1, 1].set_xlabel('Benchmark Run')
         axes[1, 1].set_ylabel('SSIM')
@@ -242,8 +267,12 @@ def create_sample_metrics():
 
     ssim = 0.99 + np.random.normal(0, 0.005, len(frames))
     ssim = np.clip(ssim, 0.98, 1.0)
+    
+    # Simulated causality data
+    cos_pred = 0.98 + np.random.normal(0, 0.01, len(frames))
+    cos_prev = 0.85 + np.random.normal(0, 0.02, len(frames))
 
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
     fig.suptitle('OLM Pipeline - Performance Metrics (Sample Data)', fontsize=16, fontweight='bold')
 
     # FPS
@@ -257,28 +286,51 @@ def create_sample_metrics():
 
     # Loss
     axes[0, 1].plot(frames, loss_short, 'g-', linewidth=2)
-    axes[0, 1].set_title('Training Loss', fontweight='bold')
+    axes[0, 1].set_title('Training Loss (Short EMA)', fontweight='bold')
     axes[0, 1].set_xlabel('Frame Count')
     axes[0, 1].set_ylabel('MSE Loss')
+    axes[0, 1].set_yscale('log')
     axes[0, 1].grid(True, alpha=0.3)
 
     # PSNR
-    axes[1, 0].plot(frames, psnr, 'r-', linewidth=2)
-    axes[1, 0].set_title('Frame Prediction Quality (PSNR)', fontweight='bold')
-    axes[1, 0].set_xlabel('Frame Count')
-    axes[1, 0].set_ylabel('PSNR (dB)')
-    axes[1, 0].grid(True, alpha=0.3)
-    axes[1, 0].axhline(y=25, color='g', linestyle='--', alpha=0.7, label='Target 25+ dB')
-    axes[1, 0].legend()
+    axes[0, 2].plot(frames, psnr, 'r-', linewidth=2)
+    axes[0, 2].set_title('Frame Prediction Quality (PSNR)', fontweight='bold')
+    axes[0, 2].set_xlabel('Frame Count')
+    axes[0, 2].set_ylabel('PSNR (dB)')
+    axes[0, 2].grid(True, alpha=0.3)
+    axes[0, 2].axhline(y=25, color='g', linestyle='--', alpha=0.7, label='Target 25+ dB')
+    axes[0, 2].legend()
 
     # SSIM
-    axes[1, 1].plot(frames, ssim, 'purple', linewidth=2)
-    axes[1, 1].set_title('Structural Similarity (SSIM)', fontweight='bold')
+    axes[1, 0].plot(frames, ssim, 'purple', linewidth=2)
+    axes[1, 0].set_title('Structural Similarity (SSIM)', fontweight='bold')
+    axes[1, 0].set_xlabel('Frame Count')
+    axes[1, 0].set_ylabel('SSIM')
+    axes[1, 0].grid(True, alpha=0.3)
+    axes[1, 0].axhline(y=0.99, color='g', linestyle='--', alpha=0.7, label='Target 0.99+')
+    axes[1, 0].legend()
+    
+    # Causality (Sample)
+    axes[1, 1].plot(frames, cos_pred, 'orange', linewidth=2, label='cos(ẑₜ₊₁, zₜ₊₁)', alpha=0.8)
+    axes[1, 1].plot(frames, cos_prev, 'cyan', linewidth=2, label='cos(zₜ, zₜ₊₁)', alpha=0.8)
+    axes[1, 1].set_title('Causality Verification', fontweight='bold')
     axes[1, 1].set_xlabel('Frame Count')
-    axes[1, 1].set_ylabel('SSIM')
+    axes[1, 1].set_ylabel('Cosine Similarity')
     axes[1, 1].grid(True, alpha=0.3)
-    axes[1, 1].axhline(y=0.99, color='g', linestyle='--', alpha=0.7, label='Target 0.99+')
     axes[1, 1].legend()
+    
+    # Summary (Sample)
+    axes[1, 2].axis('off')
+    summary_text = "Performance Summary (Sample):\n\n"
+    summary_text += f"• PSNR: {np.mean(psnr):.1f} ± {np.std(psnr):.1f} dB\n"
+    summary_text += f"• SSIM: {np.mean(ssim):.3f} ± {np.std(ssim):.3f}\n"
+    summary_text += f"• FPS: {np.mean(fps):.1f} ± {np.std(fps):.1f}\n"
+    summary_text += f"• Loss (Final): {loss_short[-1]:.2e}\n"
+    summary_text += f"\n• Total Frames: {frames[-1]}\n"
+    summary_text += "\nStatus: ✓ Sample Data Generated"
+    
+    axes[1, 2].text(0.1, 0.9, summary_text, transform=axes[1, 2].transAxes, fontsize=11,
+                     verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.3))
 
     plt.tight_layout()
     plt.savefig('images/metrics_dashboard.png', dpi=300, bbox_inches='tight')
@@ -369,8 +421,8 @@ def create_architecture_diagram():
     # Draw components
     for comp in components:
         rect = plt.Rectangle((comp["x"]-comp["width"]/2, comp["y"]-comp["height"]/2),
-                           comp["width"], comp["height"],
-                           facecolor=comp["color"], edgecolor='black', linewidth=2)
+                            comp["width"], comp["height"],
+                            facecolor=comp["color"], edgecolor='black', linewidth=2)
         ax.add_patch(rect)
         ax.text(comp["x"], comp["y"], comp["name"], ha='center', va='center',
                 fontsize=10, fontweight='bold')
