@@ -1,0 +1,24 @@
+## New-Paradigm: Provenance Upgrade PR
+
+This PR upgrades the repository to the New-Paradigm living-repo standard.
+
+### Summary
+- Adds automated provenance artifact production (.provenance/PROVENANCE.signed.json)
+- Adds provenance-check workflow to block merges missing provenance
+- Declares ARCHITECTURE_MANIFEST.json, META_LAYER_RULES.md, SYSTEM_BOUNDARY_CONSTRAINTS.json
+- Adds verification & audit utilities
+
+### Rationale
+This upgrade enforces reproducibility, provenance, and prevents stealth copying or unnoticed architecture modification. It preserves the existing code and training logic while adding transparency and an auditable trail.
+
+### Reviewer checklist
+- [ ] Confirm `ARCHITECTURE_MANIFEST.json` reflects intended system
+- [ ] Confirm `META_LAYER_RULES.md` access policy matches maintainers' intent
+- [ ] Confirm `SYSTEM_BOUNDARY_CONSTRAINTS.json` paths are accurate
+- [ ] Confirm workflows use required secrets (PROV_API_TOKEN) only where appropriate
+- [ ] Merge requires 2 approvals from maintainers
+
+### How to test locally
+1. Run `.github/scripts/verify_provenance.py .provenance/PROVENANCE.signed.json` (create a dummy PROVENANCE if needed)
+2. Run sample metrics extraction: `python3 create_visualizations.py` (project-specific)
+3. Run audit compare: `python3 audit/report_audit.py before.json after.json`

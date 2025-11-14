@@ -1,0 +1,59 @@
+name: Provenance Sign & Attest
+
+on:
+  push:
+    branches: [ main, 'paradigm/*', 'feature/*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute artifact hashes
+        run: |
+          mkdir -p .provenance
+          find . -type f -not -path '*/.git/*' -not -path './.provenance/*' -not -path './.github/workflows/*' \
+            -exec sha256sum {} \; | sort > .provenance/artifact.hash
+
+      - name: Create PROVENANCE.json
+        run: |
+          cat > .provenance/PROVENANCE.json <<'EOF'
+          {
+            "project_id": "${{ github.repository }}",
+            "commit_sha": "${{ github.sha }}",
+            "actor": "${{ github.actor }}",
+            "ref": "${{ github.ref }}",
+            "timestamp": "$(date -u +%FT%TZ)",
+            "artifacts_hash_file": ".provenance/artifact.hash"
+          }
+          EOF
+
+      - name: Sign/Attest PROVENANCE (external)
+        env:
+          PROV_API_TOKEN: ${{ secrets.PROV_API_TOKEN }}
+        run: |
+          if [ -z "$PROV_API_TOKEN" ]; then
+            echo "PROV_API_TOKEN not provided — skipping external attestation (local dev mode)."
+            cp .provenance/PROVENANCE.json .provenance/PROVENANCE.signed.json
+            exit 0
+          fi
+          # Example curl to external attestation service - adapt URL to your attester
+          RESPONSE=$(curl -s -X POST "https://provenance.example/api/sign" \
+            -H "Authorization: Bearer $PROV_API_TOKEN" \
+            -F "provenance=@.provenance/PROVENANCE.json")
+          echo "$RESPONSE" > .provenance/PROVENANCE.signed.json
+
+      - name: Upload provenance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: provenance
+          path: .provenance/PROVENANCE.signed.json
+(creates .provenance/PROVENANCE.json, posts to attestation API; you’ll need PROV_API_TOKEN secret)
