@@ -29,11 +29,22 @@ if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: report_audit.py before_metrics.json after_metrics.json")
         sys.exit(2)
+    import datetime
+
     before = load_metrics(sys.argv[1])
     after = load_metrics(sys.argv[2])
     table = compare(before, after)
     pprint(table)
-    out = {"comparison": table}
+    metadata = {
+        "before_metrics_file": sys.argv[1],
+        "after_metrics_file": sys.argv[2],
+        "run_timestamp": datetime.datetime.now().isoformat(),
+        # Add more identifiers here if available, e.g. project name, git commit, etc.
+    }
+    out = {
+        "metadata": metadata,
+        "comparison": table
+    }
     Path("audit").mkdir(parents=True, exist_ok=True)
     with open("audit/audit_report.json","w",encoding="utf-8") as f:
         json.dump(out, f, indent=2)
