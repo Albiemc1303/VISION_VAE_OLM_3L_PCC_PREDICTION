@@ -1,0 +1,10 @@
+{
+  "psnr": "25-26",
+  "ssim": "~0.99",
+  "mse": null,
+  "latent_mse": "2.6e-3 to 3.5e-3",
+  "val_loss": null,
+  "train_loss": null,
+  "fps": "24 FPS"
+}
+
