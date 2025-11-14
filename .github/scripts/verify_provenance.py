@@ -11,8 +11,7 @@ def basic_check(path):
         j = json.load(f)
     # required keys
     required = ["project_id","commit_sha","actor","timestamp","artifacts_hash_file"]
-    missing = [k for k in required if k not in j]
-    if missing:
+    if missing := [k for k in required if k not in j]:
         print("Missing required keys in provenance:", missing)
         return False
     ah = j.get("artifacts_hash_file")
