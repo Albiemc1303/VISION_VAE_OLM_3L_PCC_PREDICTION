@@ -1,0 +1,9 @@
+{
+  "max_runtime_accessible_paths": ["checkpoints/","logs/","data/"],
+  "immutable_paths": ["src/","vae_processor.py","lstm_models.py",".github/","ARCHITECTURE_MANIFEST.json","META_LAYER_RULES.md"],
+  "networking_constraints": {
+    "external_requests_allowed": true,
+    "allowed_domains": ["huggingface.co","provenance.example"],
+    "outbound_exceptions_must_be_cited": true
+  }
+}

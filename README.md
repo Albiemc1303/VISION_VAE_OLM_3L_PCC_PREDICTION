@@ -244,3 +244,19 @@ The system is designed for real-time operation:
 ## License
 
 This project is for research and educational purposes.
+
+---
+
+## Provenance & New-Paradigm Adoption
+
+This repository is upgraded to the "New-Paradigm" living-repo standard (provenance enforced).
+
+Key details:
+- Every push generates a `.provenance/PROVENANCE.signed.json` artifact. See `.github/workflows/provenance-sign.yml`.
+- Merge to `main` requires a passing `provenance-check.yml` (PR verification).
+- Architecture is declared in `ARCHITECTURE_MANIFEST.json`.
+- The meta-layer is restricted by `META_LAYER_RULES.md` (meta-layer **cannot** modify core architecture).
+- For maintainers: add `PROV_API_TOKEN` to repo secrets to enable external attestation.
+
+Motivation: reproducibility, attribution, anti-theft and alignment with the New-Paradigm living-repo standards.
+

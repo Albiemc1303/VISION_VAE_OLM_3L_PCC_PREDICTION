@@ -1,0 +1,33 @@
+name: Provenance Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download provenance artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: provenance
+        continue-on-error: true
+
+      - name: Verify provenance file present
+        run: |
+          if [ ! -f ".provenance/PROVENANCE.signed.json" ]; then
+            echo "::error ::Missing .provenance/PROVENANCE.signed.json; provenance required for merges."
+            exit 1
+          fi
+          echo "Provenance file found."
+
+      - name: Run verify_provenance.py
+        run: |
+          python3 .github/scripts/verify_provenance.py .provenance/PROVENANCE.signed.json || \
+            (echo "Provenance verification failed." && exit 1)
+(checked on PRs — verifies signed provenance is present)

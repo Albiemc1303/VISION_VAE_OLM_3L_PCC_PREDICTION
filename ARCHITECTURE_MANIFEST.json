@@ -1,0 +1,20 @@
+{
+  "project_id": "Albiemc1303/VISION_VAE_OLM_3L_PCC_PREDICTION",
+  "paradigm_standard_version": "1.0",
+  "architecture_role": "OLM pipeline - frozen VAE + 3L LSTM prediction - real-time video pipeline",
+  "forward_stream_definitions": {
+    "inputs": ["camera_frames","vae_latents"],
+    "abilities": ["latent_extraction","pattern_aggregation","compression","prediction","visualization"]
+  },
+  "meta_layer_rules": {
+    "meta_layer_has_write_access_to_core_architecture": false,
+    "meta_layer_can_call_training_loops": true,
+    "meta_layer_can_modify_model_weights": true,
+    "meta_layer_can_modify_workflow_files": false
+  },
+  "manifests": [
+    "META_LAYER_RULES.md",
+    "SYSTEM_BOUNDARY_CONSTRAINTS.json"
+  ],
+  "provenance_requirement": "Every commit must generate .provenance/PROVENANCE.signed.json (CI attestation)."
+}
